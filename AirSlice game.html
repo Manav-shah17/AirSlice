@@ -1,0 +1,1396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AirSlice — Hand Tracking Fruit Game</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink: #0d0f10;
+    --paper: #f2ede2;
+    --accent-hi: #8ff5df;
+    --accent-mid: #2fd9b8;
+    --accent-lo: #148f74;
+    --accent-outline: #0a3d32;
+    --blood: #e0473a;
+    --blood-hi: #ff8f7f;
+    --blood-lo: #a3291f;
+    --blood-outline: #4d130d;
+    --muted-hi: #d7dfe0;
+    --muted-mid: #97a9ac;
+    --muted-lo: #5f7274;
+    --muted-outline: #262f30;
+    --steel: #9fb4b8;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{
+    height:100%;
+    background: var(--ink);
+    font-family: 'Yu Gothic', 'Hiragino Sans', 'Segoe UI', sans-serif;
+    overflow:hidden;
+    color: var(--paper);
+  }
+  #stage{
+    position:relative;
+    width:100vw;
+    height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(47,217,184,0.08), transparent 60%),
+      var(--ink);
+  }
+  #frame{
+    position:relative;
+    width:min(96vw, 960px);
+    aspect-ratio: 4/3;
+    box-sizing: border-box;
+    padding: 10px;
+    background: var(--accent-outline);
+    clip-path: polygon(
+      16px 0, calc(100% - 16px) 0,
+      calc(100% - 16px) 8px, calc(100% - 8px) 8px,
+      calc(100% - 8px) 16px, 100% 16px,
+      100% calc(100% - 16px), calc(100% - 8px) calc(100% - 16px),
+      calc(100% - 8px) calc(100% - 8px), calc(100% - 16px) calc(100% - 8px),
+      calc(100% - 16px) 100%, 16px 100%,
+      16px calc(100% - 8px), 8px calc(100% - 8px),
+      8px calc(100% - 16px), 0 calc(100% - 16px),
+      0 16px, 8px 16px,
+      8px 8px, 16px 8px
+    );
+    box-shadow:
+      0 0 60px rgba(0,0,0,0.6),
+      0 30px 80px -20px rgba(0,0,0,0.8);
+  }
+  #screen{
+    position: relative;
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    border: 5px solid var(--accent-mid);
+    overflow: hidden;
+  }
+  video{
+    position:absolute; top:0; left:0;
+    width:100%; height:100%;
+    object-fit: cover;
+    transform: scaleX(-1);
+    filter: saturate(0.85) contrast(1.05) brightness(0.9);
+  }
+  canvas{
+    position:absolute; top:0; left:0;
+    width:100%; height:100%;
+  }
+
+  /* HUD */
+  #hud{
+    position:absolute; top:0; left:0; right:0;
+    display:flex; justify-content:space-between; align-items:flex-start;
+    padding: 16px 20px;
+    z-index:5;
+    pointer-events:none;
+    font-family: 'Georgia', serif;
+  }
+  #score{
+    font-size: clamp(22px, 4.2vw, 34px);
+    font-weight:400;
+    letter-spacing: 1px;
+    color: var(--accent-mid);
+    text-shadow: 0 2px 0 rgba(0,0,0,0.9), 0 0 16px rgba(47,217,184,0.5);
+    font-family: 'Press Start 2P', monospace;
+  }
+  #score .label{
+    display:block;
+    font-size:11px;
+    letter-spacing: 3px;
+    text-transform:uppercase;
+    color: var(--steel);
+    font-family: 'Segoe UI', sans-serif;
+    font-weight:400;
+  }
+  #lives{
+    display:flex; gap:8px;
+    margin-top: 42px;
+  }
+  #buffRow{
+    position:absolute; top:50%; left:50%;
+    transform: translate(-50%, -50%);
+    display:flex; gap:10px;
+  }
+  #hudControls{
+    position:absolute; top:16px; right:20px;
+    display:flex; gap:8px;
+    pointer-events:auto;
+  }
+  .iconBtn{
+    width:34px; height:34px;
+    display:flex; align-items:center; justify-content:center;
+    background: rgba(10,10,10,0.55);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 50%;
+    color: var(--paper);
+    font-size:15px;
+    cursor:pointer;
+    backdrop-filter: blur(2px);
+    transition: filter 0.15s ease, transform 0.08s ease;
+  }
+  .iconBtn:hover{ filter: brightness(1.25); }
+  .iconBtn:active{ transform: scale(0.92); }
+  .buffChip{
+    display:flex; align-items:center; gap:6px;
+    padding: 5px 10px;
+    background: rgba(10,10,10,0.55);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 20px;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    color: var(--paper);
+    backdrop-filter: blur(2px);
+  }
+  .buffChip .icon{ font-size: 13px; }
+  .buffChip.freeze{ border-color: rgba(143,245,223,0.6); color: var(--accent-hi); }
+  .buffChip.double{ border-color: rgba(242,201,76,0.6); color: #f2c94c; }
+  .buffChip.fever{ border-color: rgba(255,111,74,0.7); color: #ff6f4a; }
+  #comboMeterWrap{
+    position:absolute; top:74px; left:50%;
+    transform: translateX(-50%);
+    width: 140px; height: 7px;
+    background: rgba(10,10,10,0.55);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 6px;
+    overflow:hidden;
+    transition: opacity 0.15s ease;
+  }
+  #comboMeterWrap.hidden{ opacity:0; }
+  #comboMeterFill{
+    height:100%; width:100%;
+    background: linear-gradient(90deg, var(--accent-mid), var(--accent-hi));
+    transform-origin: left center;
+    border-radius: 6px;
+  }
+  #milestoneFlash{
+    position:absolute; inset:0;
+    background: radial-gradient(circle at 50% 42%, rgba(255,214,102,0.35), rgba(255,214,102,0) 65%);
+    opacity:0; pointer-events:none;
+  }
+  .life{
+    width: 27px; height: 30px;
+    position:relative;
+  }
+  .life svg{ width:100%; height:100%; filter: drop-shadow(0 2px 6px rgba(0,0,0,0.6)); }
+  .life.lost svg{ opacity:0.25; filter: grayscale(1); }
+
+  /* Overlays */
+  .overlay{
+    position:absolute; inset:0;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    background: rgba(10,10,10,0.72);
+    backdrop-filter: blur(3px);
+    z-index:10;
+    text-align:center;
+    padding: 24px;
+  }
+  .overlay.hidden{ display:none; }
+  .sub{
+    font-size: 13px;
+    letter-spacing: 4px;
+    text-transform:uppercase;
+    color: var(--steel);
+    margin-bottom: 28px;
+  }
+  .titleLogo{
+    font-family: 'Press Start 2P', monospace;
+    font-size: clamp(26px, 5.5vw, 44px);
+    color: var(--blood);
+    letter-spacing: 2px;
+    text-shadow: 0 3px 0 rgba(0,0,0,0.9), 0 0 30px rgba(224,71,58,0.45);
+    margin-bottom: 22px;
+    line-height: 1.4;
+  }
+
+  .rulesBox{
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 28px;
+    padding: 18px 22px;
+    border: 1px solid rgba(159,180,184,0.25);
+    border-radius: 4px;
+    background: rgba(255,255,255,0.02);
+  }
+  .rulesLabel{
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--accent-mid);
+    margin-bottom: 4px;
+  }
+  .ruleRow{
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 13.5px;
+    color: var(--steel);
+    line-height: 1.4;
+    text-align: left;
+  }
+  .ruleIcon{
+    font-size: 16px;
+    width: 22px;
+    flex-shrink: 0;
+    text-align: center;
+  }
+
+  /* ---- Pixel-art buttons ---- */
+  .pixel-btn{
+    --hi: var(--accent-hi);
+    --mid: var(--accent-mid);
+    --lo: var(--accent-lo);
+    --outline: var(--accent-outline);
+    position: relative;
+    padding: 16px 34px;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 13px;
+    letter-spacing: 1px;
+    color: #ffffff;
+    text-shadow: 2px 2px 0 rgba(0,0,0,0.35);
+    background: linear-gradient(180deg, var(--hi) 0%, var(--mid) 20%, var(--mid) 74%, var(--lo) 100%);
+    border: 4px solid var(--outline);
+    outline: none;
+    cursor: pointer;
+    clip-path: polygon(
+      8px 0, calc(100% - 8px) 0,
+      calc(100% - 8px) 4px, calc(100% - 4px) 4px,
+      calc(100% - 4px) 8px, 100% 8px,
+      100% calc(100% - 8px), calc(100% - 4px) calc(100% - 8px),
+      calc(100% - 4px) calc(100% - 4px), calc(100% - 8px) calc(100% - 4px),
+      calc(100% - 8px) 100%, 8px 100%,
+      8px calc(100% - 4px), 4px calc(100% - 4px),
+      4px calc(100% - 8px), 0 calc(100% - 8px),
+      0 8px, 4px 8px,
+      4px 4px, 8px 4px
+    );
+    transition: transform 0.08s ease, filter 0.15s ease;
+  }
+  .pixel-btn:hover{ filter: brightness(1.1); }
+  .pixel-btn:active{ transform: translateY(3px); filter: brightness(0.95); }
+
+  .btn-secondary{
+    --hi: var(--muted-hi);
+    --mid: var(--muted-mid);
+    --lo: var(--muted-lo);
+    --outline: var(--muted-outline);
+  }
+  .btn-danger{
+    --hi: var(--blood-hi);
+    --mid: var(--blood);
+    --lo: var(--blood-lo);
+    --outline: var(--blood-outline);
+  }
+
+  .diffBtn{
+    --hi: var(--muted-hi);
+    --mid: var(--muted-mid);
+    --lo: var(--muted-lo);
+    --outline: var(--muted-outline);
+    padding: 10px 18px;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: #ffffff;
+    text-shadow: 1px 1px 0 rgba(0,0,0,0.35);
+    background: linear-gradient(180deg, var(--hi) 0%, var(--mid) 20%, var(--mid) 74%, var(--lo) 100%);
+    border: 3px solid var(--outline);
+    cursor: pointer;
+    clip-path: polygon(
+      6px 0, calc(100% - 6px) 0,
+      calc(100% - 6px) 3px, calc(100% - 3px) 3px,
+      calc(100% - 3px) 6px, 100% 6px,
+      100% calc(100% - 6px), calc(100% - 3px) calc(100% - 6px),
+      calc(100% - 3px) calc(100% - 3px), calc(100% - 6px) calc(100% - 3px),
+      calc(100% - 6px) 100%, 6px 100%,
+      6px calc(100% - 3px), 3px calc(100% - 3px),
+      3px calc(100% - 6px), 0 calc(100% - 6px),
+      0 6px, 3px 6px,
+      3px 3px, 6px 3px
+    );
+    transition: transform 0.08s ease, filter 0.15s ease;
+  }
+  .diffBtn:hover{ filter: brightness(1.1); }
+  .diffBtn.selected{
+    --hi: var(--accent-hi);
+    --mid: var(--accent-mid);
+    --lo: var(--accent-lo);
+    --outline: var(--accent-outline);
+  }
+  .diffBtn:active{ transform: translateY(2px); }
+  .status{
+    position:absolute; bottom:14px; left:0; right:0;
+    text-align:center;
+    font-size: 11px;
+    letter-spacing:2px;
+    color: var(--steel);
+    z-index:5;
+    text-transform:uppercase;
+    font-family:'Segoe UI', sans-serif;
+    opacity:0.8;
+  }
+  .finalscore{
+    font-size: 20px;
+    color: var(--paper);
+    margin-bottom: 24px;
+    letter-spacing:1px;
+    font-family:'Segoe UI', sans-serif;
+  }
+  .finalscore b{ color: var(--accent-mid); font-size:22px; font-family:'Press Start 2P', monospace; }
+  #hiscoreHud{
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: var(--steel);
+    margin-top: 6px;
+    font-family: 'Press Start 2P', monospace;
+  }
+  #hiscoreHud b{ color: var(--accent-hi); }
+  .bestscore{
+    font-size: 14px;
+    color: var(--steel);
+    margin-bottom: 24px;
+    letter-spacing:1px;
+    font-family:'Segoe UI', sans-serif;
+  }
+  .bestscore b{ color: var(--accent-hi); font-family:'Press Start 2P', monospace; font-size:16px; }
+  .newbest{
+    display:inline-block;
+    margin-left: 10px;
+    padding: 3px 8px;
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: var(--ink);
+    background: var(--accent-hi);
+    border-radius: 3px;
+    font-family: 'Press Start 2P', monospace;
+    vertical-align: middle;
+    animation: pulseBest 0.9s ease-in-out infinite;
+  }
+  .newbest.hidden{ display:none; }
+  @keyframes pulseBest{
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.08); }
+  }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div id="frame">
+   <div id="screen">
+    <video id="video" playsinline></video>
+    <canvas id="canvas"></canvas>
+
+    <div id="hud">
+      <div id="score"><span class="label">Score</span><span id="scoreVal">0</span><div id="hiscoreHud">Best <b id="hiscoreHudVal">0</b></div></div>
+      <div id="comboMeterWrap" class="hidden"><div id="comboMeterFill"></div></div>
+      <div id="buffRow"></div>
+      <div id="hudControls">
+        <button id="muteBtn" class="iconBtn" title="Mute">🔊</button>
+        <button id="pauseBtn" class="iconBtn" title="Pause">⏸</button>
+      </div>
+      <div id="lives"></div>
+    </div>
+
+    <div class="status" id="statusLine">Loading camera…</div>
+    <div id="milestoneFlash"></div>
+
+    <div class="overlay" id="startOverlay">
+      <div class="titleLogo">AirSlice</div>
+      <div class="rulesBox">
+        <div class="rulesLabel">How to Play</div>
+        <div class="ruleRow"><span class="ruleIcon">👆</span><span>Point your index finger at the camera</span></div>
+        <div class="ruleRow"><span class="ruleIcon">🔪</span><span>Slice the fruit as it falls</span></div>
+        <div class="ruleRow"><span class="ruleIcon">💣</span><span>Avoid the bombs</span></div>
+        <div class="ruleRow"><span class="ruleIcon">❤️</span><span>3 lives — miss 3 bombs and it's over</span></div>
+      </div>
+      <div id="diffRow" style="display:flex; gap:10px; margin-bottom:26px;">
+        <button class="diffBtn selected" data-diff="easy">Easy</button>
+        <button class="diffBtn" data-diff="hard">Hard</button>
+        <button class="diffBtn" data-diff="impossible">Impossible</button>
+      </div>
+      <button class="pixel-btn" id="startBtn">Begin</button>
+    </div>
+
+    <div class="overlay hidden" id="overOverlay">
+      <div class="sub">Game Over</div>
+      <div class="finalscore">Fruit sliced: <b id="finalScoreVal">0</b></div>
+      <div class="bestscore">Best: <b id="bestScoreVal">0</b><span class="newbest hidden" id="newBestBadge">New Best!</span></div>
+      <div class="bestscore">Best combo: <b id="bestComboVal">0</b>x<span class="newbest hidden" id="newBestComboBadge">New Best!</span></div>
+      <div style="display:flex; gap:12px;">
+        <button class="pixel-btn" id="retryBtn">Slice Again</button>
+        <button class="pixel-btn btn-secondary" id="exitBtn">Exit</button>
+      </div>
+    </div>
+
+    <div class="overlay hidden" id="pauseOverlay">
+      <div class="sub">Paused</div>
+      <div style="display:flex; gap:12px;">
+        <button class="pixel-btn" id="resumeBtn">Resume</button>
+        <button class="pixel-btn btn-secondary" id="pauseExitBtn">Exit</button>
+      </div>
+    </div>
+   </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script>
+(function(){
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  const scoreVal = document.getElementById('scoreVal');
+  const finalScoreVal = document.getElementById('finalScoreVal');
+  const hiscoreHudVal = document.getElementById('hiscoreHudVal');
+  const bestScoreVal = document.getElementById('bestScoreVal');
+  const newBestBadge = document.getElementById('newBestBadge');
+  const bestComboVal = document.getElementById('bestComboVal');
+  const newBestComboBadge = document.getElementById('newBestComboBadge');
+  const comboMeterWrap = document.getElementById('comboMeterWrap');
+  const comboMeterFill = document.getElementById('comboMeterFill');
+  const milestoneFlash = document.getElementById('milestoneFlash');
+  const livesEl = document.getElementById('lives');
+  const buffRowEl = document.getElementById('buffRow');
+  const muteBtn = document.getElementById('muteBtn');
+  const pauseBtn = document.getElementById('pauseBtn');
+  const pauseOverlay = document.getElementById('pauseOverlay');
+  const resumeBtn = document.getElementById('resumeBtn');
+  const pauseExitBtn = document.getElementById('pauseExitBtn');
+  const statusLine = document.getElementById('statusLine');
+  const startOverlay = document.getElementById('startOverlay');
+  const overOverlay = document.getElementById('overOverlay');
+  const startBtn = document.getElementById('startBtn');
+  const retryBtn = document.getElementById('retryBtn');
+  const exitBtn = document.getElementById('exitBtn');
+
+  const BOMB_SVG = `<svg viewBox="0 0 18 20" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges">
+    <!-- fuse cord -->
+    <rect x="7" y="4" width="1" height="1" fill="#000"/>
+    <rect x="7" y="3" width="1" height="1" fill="#000"/>
+    <rect x="8" y="2" width="1" height="1" fill="#000"/>
+    <rect x="9" y="2" width="1" height="1" fill="#000"/>
+    <rect x="10" y="1" width="1" height="1" fill="#000"/>
+    <!-- spark -->
+    <rect x="12" y="1" width="1" height="1" fill="#f2c94c"/>
+    <rect x="14" y="1" width="1" height="1" fill="#f2c94c"/>
+    <rect x="13" y="0" width="1" height="1" fill="#f2c94c"/>
+    <rect x="13" y="2" width="1" height="1" fill="#f2c94c"/>
+    <rect x="13" y="1" width="1" height="1" fill="#e0473a"/>
+    <!-- bomb body silhouette (pixel circle) -->
+    <rect x="7" y="5" width="2" height="1" fill="#000"/>
+    <rect x="5" y="6" width="6" height="1" fill="#000"/>
+    <rect x="4" y="7" width="8" height="1" fill="#000"/>
+    <rect x="3" y="8" width="10" height="1" fill="#000"/>
+    <rect x="3" y="9" width="10" height="1" fill="#000"/>
+    <rect x="3" y="10" width="10" height="1" fill="#000"/>
+    <rect x="3" y="11" width="10" height="1" fill="#000"/>
+    <rect x="4" y="12" width="8" height="1" fill="#000"/>
+    <rect x="5" y="13" width="6" height="1" fill="#000"/>
+    <rect x="7" y="14" width="2" height="1" fill="#000"/>
+    <!-- inner grey fill -->
+    <rect x="5" y="7" width="6" height="5" fill="#4a4a4a"/>
+    <rect x="4" y="8" width="8" height="3" fill="#4a4a4a"/>
+    <!-- shading (darker lower-left) -->
+    <rect x="4" y="10" width="2" height="1" fill="#2c2c2c"/>
+    <rect x="4" y="11" width="3" height="1" fill="#2c2c2c"/>
+    <rect x="5" y="12" width="3" height="1" fill="#2c2c2c"/>
+    <rect x="6" y="13" width="3" height="1" fill="#2c2c2c"/>
+    <!-- white highlight -->
+    <rect x="8" y="8" width="2" height="2" fill="#fff"/>
+    <rect x="9" y="10" width="1" height="1" fill="#fff"/>
+  </svg>`;
+
+  let lives = 3, score = 0, running = false;
+  let paused = false;
+  let muted = false;
+  let W = 0, H = 0;
+
+  // ---------- High score (persisted in localStorage, per difficulty) ----------
+  const HISCORE_KEY = 'airslice_highscores';
+  let highScores = { easy: 0, hard: 0, impossible: 0 };
+  try{
+    const saved = JSON.parse(localStorage.getItem(HISCORE_KEY));
+    if(saved && typeof saved === 'object'){
+      highScores.easy = parseInt(saved.easy, 10) || 0;
+      highScores.hard = parseInt(saved.hard, 10) || 0;
+      highScores.impossible = parseInt(saved.impossible, 10) || 0;
+    }
+  } catch(err){ /* corrupted or unavailable — fall back to zeros */ }
+
+  function updateHiscoreHud(){
+    hiscoreHudVal.textContent = highScores[currentDiff];
+  }
+
+  // ---------- Best combo (persisted in localStorage, per difficulty) ----------
+  const BESTCOMBO_KEY = 'airslice_bestcombos';
+  let bestCombos = { easy: 0, hard: 0, impossible: 0 };
+  try{
+    const savedCombo = JSON.parse(localStorage.getItem(BESTCOMBO_KEY));
+    if(savedCombo && typeof savedCombo === 'object'){
+      bestCombos.easy = parseInt(savedCombo.easy, 10) || 0;
+      bestCombos.hard = parseInt(savedCombo.hard, 10) || 0;
+      bestCombos.impossible = parseInt(savedCombo.impossible, 10) || 0;
+    }
+  } catch(err){ /* corrupted or unavailable — fall back to zeros */ }
+
+  const DIFFICULTY = {
+    easy:       { speedMul: 0.85, spawnStart: 1900, spawnFloor: 1150, spawnDecay: 2 },
+    hard:       { speedMul: 1.45, spawnStart: 1400, spawnFloor: 800,  spawnDecay: 4 },
+    impossible: { speedMul: 2.3,  spawnStart: 950,  spawnFloor: 480,  spawnDecay: 8 }
+  };
+  let currentDiff = 'easy';
+  updateHiscoreHud();
+
+  const diffButtons = document.querySelectorAll('.diffBtn');
+  diffButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      diffButtons.forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      currentDiff = btn.dataset.diff;
+      updateHiscoreHud();
+    });
+  });
+
+  function sizeCanvas(){
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width;
+    canvas.height = rect.height;
+    W = canvas.width; H = canvas.height;
+  }
+  window.addEventListener('resize', sizeCanvas);
+
+  function renderLives(){
+    livesEl.innerHTML = '';
+    for(let i=0;i<3;i++){
+      const div = document.createElement('div');
+      div.className = 'life' + (i < (3-lives) ? ' lost' : '');
+      div.innerHTML = BOMB_SVG;
+      livesEl.appendChild(div);
+    }
+  }
+  renderLives();
+
+  // ---------- Game objects ----------
+  const FRUITS = [
+    {emoji:'🍉', r:44, color:'#ff5f6d'}, {emoji:'🍊', r:34, color:'#ff9d3d'}, {emoji:'🍎', r:34, color:'#e0473a'},
+    {emoji:'🍍', r:40, color:'#f2c94c'}, {emoji:'🥝', r:30, color:'#8fce53'}, {emoji:'🍇', r:34, color:'#9b6fd6'}, {emoji:'🍋', r:32, color:'#f5e042'}
+  ];
+  let objects = []; // {type:'fruit'|'bomb', x,y,vx,vy,r,emoji,sliced,spawnT}
+  let particles = []; // slice juice particles
+  let spawnTimer = 0;
+  let spawnInterval = DIFFICULTY.easy.spawnStart; // decaying base interval (gets shorter over time)
+  let nextSpawnDelay = spawnInterval; // the actual jittered wait before the next single spawn
+
+  // pick a randomized wait time around the current base interval so spawns
+  // don't tick on a fixed rhythm — sometimes close together, sometimes spread out
+  function rollNextSpawnDelay(base){
+    // most of the time, normal-ish spacing — but every so often (roughly 1 in 4)
+    // fire off a near-instant follow-up so a second object suddenly appears
+    // right on top of the last one, forcing a snap reaction instead of a
+    // predictable one-by-one rhythm
+    if(Math.random() < 0.25){
+      return base * (0.08 + Math.random() * 0.2); // sudden — 8%–28% of base
+    }
+    return base * (0.7 + Math.random() * 1.1); // normal spacing — 70%–180% of base
+  }
+  let lastT = 0;
+  let fingerTrail = []; // recent fingertip positions {x,y,t}
+  let currentTip = null;
+
+  let consecutiveBombs = 0;
+  let comboCount = 0;
+  let lastSliceTime = 0;
+  const COMBO_WINDOW = 1000; // ms — fruits sliced within this window of each other chain into a combo
+  let comboTexts = []; // floating "COMBO xN" popups: {x,y,text,life,size}
+  let runBestCombo = 0; // highest combo reached this run
+  let lastMilestone = 0; // last combo milestone (5/10/15/...) already celebrated this chain
+
+  // combo scoring curve — exponential-ish so long combos feel worth chasing
+  function comboPoints(n){
+    if(n <= 1) return 1;
+    return Math.round(n * Math.pow(1.15, n - 1));
+  }
+
+  // combo-triggered slow-mo — brief time dip on milestone hits
+  const SLOWMO_DURATION = 350; // ms
+  const SLOWMO_FACTOR = 0.4;
+  let slowUntil = 0;
+
+  // "fruit fever" — spawn rate spikes for a while after a big combo
+  const FEVER_DURATION = 5000; // ms
+  const FEVER_SPAWN_MUL = 1.8;
+  let feverUntil = 0;
+
+  function triggerMilestone(n){
+    playComboMilestone();
+    milestoneFlash.style.transition = 'none';
+    milestoneFlash.style.opacity = '0.9';
+    requestAnimationFrame(() => {
+      milestoneFlash.style.transition = 'opacity 0.6s ease';
+      milestoneFlash.style.opacity = '0';
+    });
+    slowUntil = performance.now() + SLOWMO_DURATION;
+    if(n >= 8) feverUntil = performance.now() + FEVER_DURATION;
+  }
+
+  function updateComboMeter(){
+    const now = performance.now();
+    const elapsed = now - lastSliceTime;
+    const active = comboCount >= 1 && elapsed < COMBO_WINDOW && running && !paused;
+    comboMeterWrap.classList.toggle('hidden', !active);
+    if(active){
+      const frac = Math.max(0, 1 - elapsed / COMBO_WINDOW);
+      comboMeterFill.style.transform = `scaleX(${frac})`;
+    }
+  }
+
+  // ---------- Power-ups ----------
+  const POWERUPS = [
+    { type:'freeze', emoji:'❄️', r:32 },
+    { type:'double', emoji:'⭐', r:32 },
+    { type:'life',   emoji:'❤️', r:32 }
+  ];
+  const FREEZE_DURATION = 4000; // ms
+  const DOUBLE_DURATION = 6000; // ms
+  const FREEZE_SLOWDOWN = 0.35; // fraction of normal speed while frozen
+  let freezeUntil = 0;
+  let doubleUntil = 0;
+
+  function updateBuffChips(){
+    const now = performance.now();
+    const chips = [];
+    if(freezeUntil > now) chips.push(`<div class="buffChip freeze"><span class="icon">❄️</span>${Math.ceil((freezeUntil-now)/1000)}s</div>`);
+    if(doubleUntil > now) chips.push(`<div class="buffChip double"><span class="icon">⭐</span>${Math.ceil((doubleUntil-now)/1000)}s</div>`);
+    if(feverUntil > now) chips.push(`<div class="buffChip fever"><span class="icon">🔥</span>${Math.ceil((feverUntil-now)/1000)}s</div>`);
+    buffRowEl.innerHTML = chips.join('');
+  }
+
+  function spawnObject(){
+    const baseBombChance = 0.35;
+    // reduce odds of another bomb the more bombs have appeared in a row,
+    // and hard-cap at 2 in a row so it never feels like a bomb barrage
+    let bombChance = baseBombChance;
+    if(consecutiveBombs === 1) bombChance = baseBombChance * 0.4;
+    if(consecutiveBombs >= 2) bombChance = 0;
+
+    const isBomb = Math.random() < bombChance;
+    consecutiveBombs = isBomb ? consecutiveBombs + 1 : 0;
+
+    // powerups only roll on non-bomb spawns, and rarely
+    const isPowerup = !isBomb && Math.random() < 0.06;
+    const powerupDef = isPowerup ? POWERUPS[Math.floor(Math.random()*POWERUPS.length)] : null;
+
+    let type, r, emoji, color;
+    if(isBomb){
+      type = 'bomb'; r = 30; emoji = '💣'; color = null;
+    } else if(isPowerup){
+      type = 'powerup'; r = powerupDef.r; emoji = powerupDef.emoji; color = null;
+    } else {
+      const f = FRUITS[Math.floor(Math.random()*FRUITS.length)];
+      type = 'fruit'; r = f.r; emoji = f.emoji; color = f.color;
+    }
+
+    const x = W*0.15 + Math.random()*W*0.7;
+
+    const mul = DIFFICULTY[currentDiff].speedMul;
+    const vy = (H*0.0025 + Math.random()*H*0.0015) * mul;
+    const vx = (Math.random()-0.5) * W*0.0025 * mul;
+    objects.push({
+      type, x, y: -r - 40, vx, vy, r, emoji, color, sliced:false, rot: Math.random()*Math.PI, vr:(Math.random()-0.5)*0.03,
+      powerupType: isPowerup ? powerupDef.type : null
+    });
+  }
+
+  function reset(){
+    lives = 3; score = 0; objects = []; particles = []; fingerTrail = [];
+    paused = false;
+    spawnTimer = 0; spawnInterval = DIFFICULTY[currentDiff].spawnStart;
+    nextSpawnDelay = rollNextSpawnDelay(spawnInterval);
+    consecutiveBombs = 0;
+    comboCount = 0; lastSliceTime = 0; comboTexts = [];
+    runBestCombo = 0; lastMilestone = 0; slowUntil = 0; feverUntil = 0;
+    freezeUntil = 0; doubleUntil = 0; updateBuffChips();
+    comboMeterWrap.classList.add('hidden');
+    scoreVal.textContent = '0';
+    renderLives();
+  }
+
+  function gravity(){ return H*0.00012 * DIFFICULTY[currentDiff].speedMul; }
+
+  // ---------- Sound effects (synthesized, no external files) ----------
+  let actx = null;
+  let masterGain = null;
+  function getAudioCtx(){
+    if(!actx){
+      actx = new (window.AudioContext || window.webkitAudioContext)();
+      masterGain = actx.createGain();
+      masterGain.gain.value = muted ? 0 : 1;
+      masterGain.connect(actx.destination);
+    }
+    if(actx.state === 'suspended') actx.resume();
+    return actx;
+  }
+
+  function playWhoosh(){
+    const ctx = getAudioCtx();
+    const t0 = ctx.currentTime;
+    const noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 0.18, ctx.sampleRate);
+    const data = noiseBuf.getChannelData(0);
+    for(let i=0;i<data.length;i++) data[i] = (Math.random()*2-1) * (1 - i/data.length);
+    const noise = ctx.createBufferSource();
+    noise.buffer = noiseBuf;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(1800, t0);
+    filter.frequency.exponentialRampToValueAtTime(500, t0 + 0.18);
+    filter.Q.value = 0.8;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.35, t0);
+    gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.18);
+    noise.connect(filter).connect(gain).connect(masterGain);
+    noise.start(t0);
+    noise.stop(t0 + 0.2);
+  }
+
+  function playBoom(){
+    const ctx = getAudioCtx();
+    const t0 = ctx.currentTime;
+    // low thump
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(120, t0);
+    osc.frequency.exponentialRampToValueAtTime(30, t0 + 0.35);
+    const oGain = ctx.createGain();
+    oGain.gain.setValueAtTime(0.7, t0);
+    oGain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.4);
+    osc.connect(oGain).connect(masterGain);
+    osc.start(t0); osc.stop(t0 + 0.4);
+    // noisy crack layered on top
+    const noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 0.3, ctx.sampleRate);
+    const data = noiseBuf.getChannelData(0);
+    for(let i=0;i<data.length;i++) data[i] = (Math.random()*2-1) * (1 - i/data.length);
+    const noise = ctx.createBufferSource();
+    noise.buffer = noiseBuf;
+    const nFilter = ctx.createBiquadFilter();
+    nFilter.type = 'lowpass';
+    nFilter.frequency.setValueAtTime(2000, t0);
+    nFilter.frequency.exponentialRampToValueAtTime(200, t0 + 0.3);
+    const nGain = ctx.createGain();
+    nGain.gain.setValueAtTime(0.5, t0);
+    nGain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.3);
+    noise.connect(nFilter).connect(nGain).connect(masterGain);
+    noise.start(t0); noise.stop(t0 + 0.3);
+  }
+
+  function playPowerup(){
+    const ctx = getAudioCtx();
+    const t0 = ctx.currentTime;
+    const notes = [523.25, 659.25, 783.99]; // C5, E5, G5 — bright ascending chime
+    notes.forEach((freq, i) => {
+      const start = t0 + i*0.06;
+      const osc = ctx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.value = freq;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.3, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.22);
+      osc.connect(gain).connect(masterGain);
+      osc.start(start);
+      osc.stop(start + 0.24);
+    });
+  }
+
+  function playComboMilestone(){
+    const ctx = getAudioCtx();
+    const t0 = ctx.currentTime;
+    const notes = [392.0, 493.88, 587.33, 783.99]; // G4, B4, D5, G5 — bright ascending arpeggio, bigger than the powerup chime
+    notes.forEach((freq, i) => {
+      const start = t0 + i*0.05;
+      const osc = ctx.createOscillator();
+      osc.type = 'square';
+      osc.frequency.value = freq;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.22, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.2);
+      osc.connect(gain).connect(masterGain);
+      osc.start(start);
+      osc.stop(start + 0.22);
+    });
+  }
+
+  function playGameOverJingle(){
+    const ctx = getAudioCtx();
+    const t0 = ctx.currentTime;
+    const notes = [392.00, 329.63, 261.63, 196.00]; // G4, E4, C4, G3 — descending, "aw shucks" feel
+    notes.forEach((freq, i) => {
+      const start = t0 + i*0.16;
+      const osc = ctx.createOscillator();
+      osc.type = 'square';
+      osc.frequency.value = freq;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.25, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.28);
+      osc.connect(gain).connect(masterGain);
+      osc.start(start);
+      osc.stop(start + 0.3);
+    });
+  }
+
+  function slicePop(obj, isBomb){
+    const splatColor = isBomb ? '#e05a3a' : (obj.color || '#e8b35a');
+    const darkColor = isBomb ? '#7a1f12' : shadeColor(splatColor, -30);
+
+    // fine fast droplets — the spray
+    for(let i=0;i<22;i++){
+      const ang = Math.random()*Math.PI*2;
+      const spd = 2 + Math.random()*7;
+      particles.push({
+        kind:'droplet', x: obj.x, y: obj.y,
+        vx: Math.cos(ang)*spd, vy: Math.sin(ang)*spd - 2.5,
+        life: 1, decay: 1, color: splatColor, r: 2+Math.random()*3.5
+      });
+    }
+
+    // chunky blobs — bigger, slower, land and linger
+    for(let i=0;i<7;i++){
+      const ang = Math.random()*Math.PI*2;
+      const spd = 1 + Math.random()*3.5;
+      particles.push({
+        kind:'chunk', x: obj.x, y: obj.y,
+        vx: Math.cos(ang)*spd, vy: Math.sin(ang)*spd - 1.5,
+        life: 1, decay: 0.55, color: Math.random() < 0.5 ? splatColor : darkColor,
+        r: 5+Math.random()*7, rot: Math.random()*Math.PI*2, vr:(Math.random()-0.5)*0.1
+      });
+    }
+
+    // soft stain — the big splash mark that lingers on screen
+    for(let i=0;i<3;i++){
+      const ang = Math.random()*Math.PI*2;
+      const dist = 6 + Math.random()*22;
+      particles.push({
+        kind:'stain',
+        x: obj.x + Math.cos(ang)*dist, y: obj.y + Math.sin(ang)*dist,
+        vx: Math.cos(ang)*0.6, vy: Math.sin(ang)*0.6 + 0.3,
+        life: 1, decay: 0.32, color: splatColor,
+        r: obj.r*(0.5+Math.random()*0.4)
+      });
+    }
+  }
+
+  function shadeColor(hex, percent){
+    const num = parseInt(hex.replace('#',''), 16);
+    let r = (num >> 16) + Math.round(2.55*percent);
+    let g = ((num >> 8) & 0x00FF) + Math.round(2.55*percent);
+    let b = (num & 0x0000FF) + Math.round(2.55*percent);
+    r = Math.max(0, Math.min(255, r));
+    g = Math.max(0, Math.min(255, g));
+    b = Math.max(0, Math.min(255, b));
+    return `#${(1<<24 | r<<16 | g<<8 | b).toString(16).slice(1)}`;
+  }
+
+  // blade trail heat colors — teal (base) → gold (mid combo) → white-hot (high combo)
+  const TRAIL_STOPS = {
+    stroke: [[242,237,226], [255,224,140], [255,255,255]],
+    glow:   [[47,217,184],  [255,214,102], [255,255,255]]
+  };
+  function lerpTrailColor(t, glow){
+    const stops = glow ? TRAIL_STOPS.glow : TRAIL_STOPS.stroke;
+    const seg = t < 0.5 ? 0 : 1;
+    const localT = t < 0.5 ? t/0.5 : (t-0.5)/0.5;
+    const a = stops[seg], b = stops[seg+1];
+    const r = Math.round(a[0] + (b[0]-a[0])*localT);
+    const g = Math.round(a[1] + (b[1]-a[1])*localT);
+    const bl = Math.round(a[2] + (b[2]-a[2])*localT);
+    return `${r},${g},${bl}`;
+  }
+
+  function applyPowerup(type){
+    const now = performance.now();
+    if(type === 'freeze'){
+      freezeUntil = now + FREEZE_DURATION;
+    } else if(type === 'double'){
+      doubleUntil = now + DOUBLE_DURATION;
+    } else if(type === 'life'){
+      if(lives < 3){
+        lives++;
+        renderLives();
+      } else {
+        score += 5; // already at max lives — bonus points instead
+        scoreVal.textContent = score;
+      }
+    }
+  }
+
+  function loseLife(){
+    lives--;
+    renderLives();
+    playBoom();
+    canvas.parentElement.animate(
+      [{ boxShadow:'0 0 0 1px rgba(224,71,58,0.9), 0 0 60px rgba(224,71,58,0.5)'},
+       { boxShadow:'0 0 0 1px rgba(47,217,184,0.35), 0 0 60px rgba(0,0,0,0.6)'}],
+      { duration: 400 }
+    );
+    shakeScreen();
+    if(lives <= 0){
+      endGame();
+    }
+  }
+
+  function shakeScreen(){
+    const frame = document.getElementById('frame');
+    // decaying jitter — big kick, settles back to center
+    const amp = 14;
+    const keyframes = [];
+    const steps = 8;
+    for(let i=0;i<=steps;i++){
+      const decay = 1 - i/steps;
+      const dx = (Math.random()*2 - 1) * amp * decay;
+      const dy = (Math.random()*2 - 1) * amp * decay;
+      const rot = (Math.random()*2 - 1) * 1.5 * decay;
+      keyframes.push({ transform: `translate(${dx}px, ${dy}px) rotate(${rot}deg)` });
+    }
+    keyframes.push({ transform: 'translate(0, 0) rotate(0deg)' });
+    frame.animate(keyframes, { duration: 380, easing: 'ease-out' });
+  }
+
+  function endGame(){
+    running = false;
+    finalScoreVal.textContent = score;
+
+    const isNewBest = score > highScores[currentDiff];
+    if(isNewBest){
+      highScores[currentDiff] = score;
+      try{ localStorage.setItem(HISCORE_KEY, JSON.stringify(highScores)); } catch(err){ /* storage unavailable — ignore */ }
+      updateHiscoreHud();
+    }
+    bestScoreVal.textContent = highScores[currentDiff];
+    newBestBadge.classList.toggle('hidden', !isNewBest);
+
+    const isNewBestCombo = runBestCombo > bestCombos[currentDiff];
+    if(isNewBestCombo){
+      bestCombos[currentDiff] = runBestCombo;
+      try{ localStorage.setItem(BESTCOMBO_KEY, JSON.stringify(bestCombos)); } catch(err){ /* storage unavailable — ignore */ }
+    }
+    bestComboVal.textContent = bestCombos[currentDiff];
+    newBestComboBadge.classList.toggle('hidden', !isNewBestCombo);
+
+    comboMeterWrap.classList.add('hidden');
+    overOverlay.classList.remove('hidden');
+    playGameOverJingle();
+  }
+
+  // ---------- Slice detection ----------
+  function checkSlices(){
+    if(fingerTrail.length < 2) return;
+    const a = fingerTrail[fingerTrail.length-2];
+    const b = fingerTrail[fingerTrail.length-1];
+    const segLen = Math.hypot(b.x-a.x, b.y-a.y);
+    if(segLen < 2) return;
+
+    for(const obj of objects){
+      if(obj.sliced) continue;
+      // distance from segment a-b to obj center
+      const d = pointSegDist(obj.x, obj.y, a.x, a.y, b.x, b.y);
+      if(d < obj.r + 14){
+        obj.sliced = true;
+        obj.sliceT = 0;
+        if(obj.type === 'bomb'){
+          loseLife();
+          comboCount = 0; // a bomb breaks any fruit-slicing streak
+          lastMilestone = 0;
+        } else if(obj.type === 'powerup'){
+          applyPowerup(obj.powerupType);
+          playPowerup();
+        } else {
+          const now = performance.now();
+          comboCount = (now - lastSliceTime < COMBO_WINDOW) ? comboCount + 1 : 1;
+          lastSliceTime = now;
+          if(comboCount > runBestCombo) runBestCombo = comboCount;
+          if(comboCount < 2) lastMilestone = 0; // chain restarted — re-arm milestones
+
+          let points = comboPoints(comboCount);
+          if(doubleUntil > performance.now()) points *= 2;
+          score += points;
+          scoreVal.textContent = score;
+          playWhoosh();
+
+          if(comboCount >= 2){
+            const isMilestone = comboCount % 5 === 0 && comboCount > lastMilestone;
+            comboTexts.push({
+              x: obj.x, y: obj.y - obj.r - 10,
+              text: isMilestone ? `⚡ COMBO x${comboCount}! ⚡` : `COMBO x${comboCount}!`,
+              life: 1,
+              size: Math.min(52, 22 + comboCount*4),
+              milestone: isMilestone
+            });
+            if(isMilestone){
+              lastMilestone = comboCount;
+              triggerMilestone(comboCount);
+            }
+          }
+        }
+        slicePop(obj, obj.type==='bomb');
+      }
+    }
+  }
+
+  function pointSegDist(px,py, x1,y1, x2,y2){
+    const dx = x2-x1, dy = y2-y1;
+    const len2 = dx*dx+dy*dy;
+    let t = len2 === 0 ? 0 : ((px-x1)*dx + (py-y1)*dy)/len2;
+    t = Math.max(0, Math.min(1, t));
+    const cx = x1 + t*dx, cy = y1 + t*dy;
+    return Math.hypot(px-cx, py-cy);
+  }
+
+  // ---------- Draw ----------
+  function draw(dt){
+    ctx.clearRect(0,0,W,H);
+
+    // stains — soft lingering splash marks, drawn first so everything else sits on top
+    for(const p of particles){
+      if(p.kind !== 'stain') continue;
+      const a = Math.max(0, p.life) * 0.55;
+      if(a <= 0) continue;
+      ctx.save();
+      ctx.globalAlpha = a;
+      const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r);
+      grad.addColorStop(0, p.color);
+      grad.addColorStop(0.7, p.color);
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+
+    // finger trail (blade streak) — heats up teal → gold → white-hot as the combo climbs
+    if(fingerTrail.length > 1){
+      ctx.save();
+      const comboActive = comboCount >= 2 && (performance.now() - lastSliceTime) < COMBO_WINDOW;
+      const heatT = comboActive ? Math.min(1, (comboCount - 2) / 8) : 0; // 0 at combo2, 1 at combo10+
+      const strokeColor = lerpTrailColor(heatT, false);
+      const glowColor = lerpTrailColor(heatT, true);
+      for(let i=1;i<fingerTrail.length;i++){
+        const p0 = fingerTrail[i-1], p1 = fingerTrail[i];
+        const age = (performance.now() - p1.t)/220;
+        const alpha = Math.max(0, 1-age);
+        if(alpha <= 0) continue;
+        ctx.strokeStyle = `rgba(${strokeColor},${alpha*0.9})`;
+        ctx.lineWidth = (5 + heatT*2) * alpha + 1;
+        ctx.lineCap = 'round';
+        ctx.shadowColor = `rgba(${glowColor},0.85)`;
+        ctx.shadowBlur = (12 + heatT*10)*alpha;
+        ctx.beginPath();
+        ctx.moveTo(p0.x, p0.y);
+        ctx.lineTo(p1.x, p1.y);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // objects
+    for(const obj of objects){
+      ctx.save();
+      ctx.translate(obj.x, obj.y);
+      ctx.rotate(obj.rot);
+      let scale = 1;
+      let alpha = 1;
+      if(obj.sliced){
+        scale = 1 + obj.sliceT*0.4;
+        alpha = Math.max(0, 1 - obj.sliceT*1.6);
+      }
+      ctx.globalAlpha = alpha;
+      ctx.font = `${obj.r*2*scale}px serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      if(obj.sliced){
+        // draw split halves drifting apart
+        ctx.save();
+        ctx.translate(-obj.sliceT*18, 0);
+        ctx.rotate(-obj.sliceT*0.6);
+        ctx.fillText(obj.emoji, 0, 0);
+        ctx.restore();
+      } else {
+        ctx.fillText(obj.emoji, 0, 0);
+      }
+      ctx.restore();
+    }
+
+    // particles — chunks (irregular blobs) then droplets (small round spray) on top
+    for(const p of particles){
+      if(p.kind !== 'chunk') continue;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, p.life);
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      // lumpy blob: a handful of overlapping offset circles instead of a perfect circle
+      ctx.arc(0, 0, p.r, 0, Math.PI*2);
+      ctx.arc(p.r*0.5, p.r*0.2, p.r*0.6, 0, Math.PI*2);
+      ctx.arc(-p.r*0.4, p.r*0.3, p.r*0.55, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    }
+    for(const p of particles){
+      if(p.kind === 'chunk' || p.kind === 'stain') continue;
+      ctx.globalAlpha = Math.max(0, p.life);
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // combo popups
+    for(const c of comboTexts){
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, c.life);
+      ctx.font = `900 ${c.size}px "Courier New", monospace`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = c.milestone ? '#5a3a0d' : '#0d3d38';
+      ctx.strokeText(c.text, c.x, c.y);
+      if(c.milestone){
+        ctx.shadowColor = 'rgba(255,214,102,0.85)';
+        ctx.shadowBlur = 18;
+      }
+      ctx.fillStyle = c.milestone ? '#ffd666' : '#2fd9b8';
+      ctx.fillText(c.text, c.x, c.y);
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+
+    // fingertip marker
+    if(currentTip){
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(currentTip.x, currentTip.y, 9, 0, Math.PI*2);
+      ctx.strokeStyle = 'rgba(47,217,184,0.9)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(currentTip.x, currentTip.y, 3, 0, Math.PI*2);
+      ctx.fillStyle = '#f2ede2';
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function update(dt){
+    const now = performance.now();
+    const frozen = freezeUntil > now;
+    const sloMo = slowUntil > now;
+    let timeMul = 1;
+    if(frozen) timeMul *= FREEZE_SLOWDOWN;
+    if(sloMo) timeMul *= SLOWMO_FACTOR;
+    const feverActive = feverUntil > now;
+    const spawnTimeMul = timeMul * (feverActive ? FEVER_SPAWN_MUL : 1);
+
+    // spawn — one object at a time, on its own randomized clock.
+    // overlap on screen happens naturally when the random gap is short,
+    // instead of being forced by a synced "batch" event.
+    spawnTimer += dt * spawnTimeMul;
+    if(spawnTimer > nextSpawnDelay){
+      spawnTimer = 0;
+      spawnObject();
+      spawnInterval = Math.max(DIFFICULTY[currentDiff].spawnFloor, spawnInterval - DIFFICULTY[currentDiff].spawnDecay);
+      nextSpawnDelay = rollNextSpawnDelay(spawnInterval);
+    }
+
+    // physics — slowed while frozen
+    const g = gravity() * timeMul;
+    for(const obj of objects){
+      if(!obj.sliced){
+        obj.vy += g;
+        obj.x += obj.vx * (dt/16) * timeMul;
+        obj.y += obj.vy * (dt/16) * timeMul;
+        obj.rot += obj.vr * timeMul;
+      } else {
+        obj.sliceT += dt/500;
+        obj.y += 2;
+      }
+    }
+    // remove offscreen / missed fruit (no penalty for missed fruit, only bombs punish on slice)
+    objects = objects.filter(o => {
+      if(o.sliced && o.sliceT > 1) return false;
+      if(!o.sliced && o.y - o.r > H + 60) return false;
+      return true;
+    });
+
+    // particles
+    for(const p of particles){
+      if(p.kind === 'stain'){
+        p.vx *= 0.9; p.vy *= 0.9;
+        p.x += p.vx; p.y += p.vy;
+      } else {
+        p.vy += p.kind === 'chunk' ? 0.22 : 0.15;
+        p.x += p.vx; p.y += p.vy;
+        if(p.kind === 'chunk') p.rot += p.vr;
+      }
+      p.life -= dt/500 * (p.decay || 1);
+    }
+    particles = particles.filter(p => p.life > 0);
+
+    // combo text popups — drift upward and fade
+    for(const c of comboTexts){
+      c.y -= dt*0.05;
+      c.life -= dt/700;
+    }
+    comboTexts = comboTexts.filter(c => c.life > 0);
+
+    // trim finger trail
+    fingerTrail = fingerTrail.filter(p => now - p.t < 260);
+
+    updateBuffChips();
+    updateComboMeter();
+    checkSlices();
+  }
+
+  function loop(t){
+    if(!lastT) lastT = t;
+    const dt = Math.min(40, t - lastT);
+    lastT = t;
+    if(running && !paused){
+      update(dt);
+    }
+    draw(dt);
+    requestAnimationFrame(loop);
+  }
+
+  // ---------- MediaPipe Hands ----------
+  let handsReady = false;
+
+  const hands = new Hands({
+    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+  });
+  hands.setOptions({
+    maxNumHands: 1,
+    modelComplexity: 0,
+    minDetectionConfidence: 0.6,
+    minTrackingConfidence: 0.5
+  });
+
+  hands.onResults((results) => {
+    if(!handsReady){
+      handsReady = true;
+      statusLine.textContent = 'Camera ready — show your index finger';
+    }
+    if(results.multiHandLandmarks && results.multiHandLandmarks.length > 0){
+      const lm = results.multiHandLandmarks[0][8]; // index fingertip
+      // video is mirrored via CSS scaleX(-1); mirror the x coordinate to match
+      const x = (1 - lm.x) * W;
+      const y = lm.y * H;
+      currentTip = {x,y};
+      fingerTrail.push({x,y,t: performance.now()});
+      if(fingerTrail.length > 12) fingerTrail.shift();
+    } else {
+      currentTip = null;
+    }
+  });
+
+  let camera = null;
+
+  async function startCamera(){
+    try{
+      camera = new Camera(video, {
+        onFrame: async () => { await hands.send({image: video}); },
+        width: 640,
+        height: 480
+      });
+      await camera.start();
+    } catch(err){
+      statusLine.textContent = 'Camera access failed — check permissions and reload';
+      console.error(err);
+    }
+  }
+
+  // ---------- Boot ----------
+  function boot(){
+    sizeCanvas();
+    startCamera();
+    requestAnimationFrame(loop);
+  }
+
+  startBtn.addEventListener('click', () => {
+    getAudioCtx(); // unlock audio on first user gesture
+    startOverlay.classList.add('hidden');
+    reset();
+    running = true;
+  });
+  retryBtn.addEventListener('click', () => {
+    getAudioCtx();
+    overOverlay.classList.add('hidden');
+    reset();
+    running = true;
+  });
+  exitBtn.addEventListener('click', () => {
+    overOverlay.classList.add('hidden');
+    reset();
+    running = false;
+    startOverlay.classList.remove('hidden');
+  });
+
+  function setPaused(v){
+    paused = v;
+    pauseOverlay.classList.toggle('hidden', !paused);
+    pauseBtn.textContent = paused ? '▶' : '⏸';
+    pauseBtn.title = paused ? 'Resume' : 'Pause';
+  }
+
+  pauseBtn.addEventListener('click', () => {
+    if(!running) return; // nothing to pause on the start screen
+    setPaused(!paused);
+  });
+  resumeBtn.addEventListener('click', () => setPaused(false));
+  pauseExitBtn.addEventListener('click', () => {
+    setPaused(false);
+    pauseOverlay.classList.add('hidden');
+    reset();
+    running = false;
+    startOverlay.classList.remove('hidden');
+  });
+
+  function setMuted(v){
+    muted = v;
+    if(masterGain) masterGain.gain.value = muted ? 0 : 1;
+    muteBtn.textContent = muted ? '🔇' : '🔊';
+    muteBtn.title = muted ? 'Unmute' : 'Mute';
+  }
+  muteBtn.addEventListener('click', () => setMuted(!muted));
+
+  window.addEventListener('keydown', (e) => {
+    if(e.key === 'Escape' || e.key.toLowerCase() === 'p'){
+      if(running) setPaused(!paused);
+    }
+  });
+
+  video.addEventListener('loadeddata', () => { sizeCanvas(); });
+
+  boot();
+})();
+</script>
+
+</body>
+</html>
